@@ -1,0 +1,117 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 1. Path Variable Hardening Matchers
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // 2. Global Helpers
+    function isSignedIn() { return request.auth != null; }
+    function isVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // 3. Validation Blueprints
+    function isValidProfile(data) {
+      return data.keys().hasAll(['id', 'email']) &&
+             data.keys().size() <= 15 &&
+             data.id == request.auth.uid &&
+             data.email is string && data.email.size() <= 200 &&
+             (!('fullName' in data) || (data.fullName is string && data.fullName.size() <= 200)) &&
+             (!('businessName' in data) || (data.businessName is string && data.businessName.size() <= 200));
+    }
+
+    function isValidClient(data) {
+      return data.keys().hasAll(['id', 'userId', 'name', 'email']) &&
+             data.keys().size() <= 15 &&
+             data.userId == request.auth.uid &&
+             data.name is string && data.name.size() <= 200 &&
+             data.email is string && data.email.size() <= 200 &&
+             isValidId(data.id);
+    }
+
+    function isValidInvoice(data) {
+      return data.keys().hasAll(['id', 'userId', 'clientId', 'invoiceNumber', 'amount']) &&
+             data.keys().size() <= 25 &&
+             data.userId == request.auth.uid &&
+             isValidId(data.clientId) &&
+             data.invoiceNumber is string && data.invoiceNumber.size() <= 50 &&
+             data.amount is number && data.amount >= 0 &&
+             isValidId(data.id);
+    }
+
+    function isValidLog(data) {
+       return data.keys().hasAll(['id', 'invoiceId', 'userId', 'clientId']) &&
+              data.keys().size() <= 15 &&
+              data.userId == request.auth.uid &&
+              isValidId(data.id);
+    }
+
+    // 4. Collection Matches
+    match /profiles/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidProfile(incoming());
+      allow update: if isOwner(userId) && isValidProfile(incoming()) &&
+                    incoming().email == existing().email &&
+                    incoming().id == existing().id;
+    }
+
+    match /clients/{clientId} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isVerified() && isValidId(clientId) && isValidClient(incoming());
+      allow update: if isVerified() && isValidId(clientId) && existing().userId == request.auth.uid && isValidClient(incoming());
+      allow delete: if isVerified() && isValidId(clientId) && resource.data.userId == request.auth.uid;
+    }
+
+    match /invoices/{invoiceId} {
+      allow get: if isValidId(invoiceId); 
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isVerified() && isValidId(invoiceId) && isValidInvoice(incoming()) && 
+                    get(/databases/$(database)/documents/clients/$(incoming().clientId)).data.userId == request.auth.uid;
+      
+      allow update: if isVerified() && isValidId(invoiceId) && (
+        (existing().userId == request.auth.uid && isValidInvoice(incoming())) ||
+        (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'viewedAt', 'paidDate']) &&
+         incoming().status in ['viewed', 'paid', 'partial'])
+      );
+      
+      allow delete: if isVerified() && isValidId(invoiceId) && resource.data.userId == request.auth.uid;
+    }
+
+    match /chase_sequences/{sequenceId} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isVerified() && isValidId(sequenceId) && incoming().userId == request.auth.uid;
+      allow update: if isVerified() && isValidId(sequenceId) && existing().userId == request.auth.uid;
+      allow delete: if isVerified() && isValidId(sequenceId) && resource.data.userId == request.auth.uid;
+    }
+
+    match /chase_logs/{logId} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isVerified() && isValidId(logId) && isValidLog(incoming());
+    }
+
+    match /templates/{templateId} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isVerified() && isValidId(templateId) && incoming().userId == request.auth.uid;
+      allow update: if isVerified() && isValidId(templateId) && existing().userId == request.auth.uid;
+      allow delete: if isVerified() && isValidId(templateId) && resource.data.userId == request.auth.uid;
+    }
+
+    match /notifications/{notificationId} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && isValidId(notificationId) && existing().userId == request.auth.uid &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['read']);
+    }
+  }
+}
