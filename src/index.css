@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Georgia", serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-bg: #F7F6F2;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F2F1ED;
+  --color-border: rgba(30, 25, 20, 0.10);
+  --color-text: #1A1816;
+  --color-text-muted: #6B6860;
+  --color-text-faint: #B3B2AE;
+  --color-primary: #0F6B6F;
+  --color-primary-hover: #0B5558;
+  --color-accent: #D96C75;
+  --color-success: #2E7D32;
+  --color-warning: #C27A00;
+  --color-error: #B42318;
+  --color-dark-bg: #111110;
+  --color-dark-surface: #1A1917;
+  --color-dark-border: rgba(255, 255, 255, 0.08);
+}
+
+@layer base {
+  body {
+    @apply bg-bg text-text font-sans antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display tracking-tight italic;
+  }
+}
+
+/* Custom shadow */
+.shadow-premium {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+}
+
